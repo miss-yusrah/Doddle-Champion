@@ -1,0 +1,31 @@
+{
+  "name": "doodle-champion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A duelling game on a sheet of paper. Your finger is the pencil.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run check:marks && npm run check:thumb && npm run check:sim && npm run check:modes && npm run check:newmodes && npm run check:puppet && npm run check:share",
+    "check:marks": "tsx tools/markcheck.ts",
+    "check:sim": "tsx tools/simcheck.ts",
+    "check:modes": "tsx tools/modecheck.ts",
+    "check:newmodes": "tsx tools/newmodecheck.ts",
+    "check:share": "tsx tools/sharecheck.ts",
+    "check:thumb": "tsx tools/thumbcheck.ts",
+    "check:puppet": "tsx tools/puppetcheck.ts"
+  },
+  "dependencies": {
+    "@celo/attribution-tags": "^0.3.0",
+    "pixi.js": "^8.6.6",
+    "viem": "^2.55.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

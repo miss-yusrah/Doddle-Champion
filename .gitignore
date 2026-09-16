@@ -1,0 +1,35 @@
+# Dependencies & build
+node_modules/
+dist/
+.DS_Store
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.secret
+secrets/
+mnemonic*
+seed*
+
+# Foundry
+contracts/.env
+contracts/.env.*
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# Mobile wraps
+ios/
+android/
+
+# Local Vite / editor
+*.local
+.vscode/
+.idea/

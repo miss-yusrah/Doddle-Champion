@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f0efe9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Doodle Champion</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" sizes="180x180">
+<meta name="application-name" content="Doodle Champion">
+<style>
+  :root {
+    --paper:  #f0efe9;
+    --ink:    #22262b;
+    --soft:   #6d747c;
+    --gold:   #d8a02a;
+    --eraser: #d2597a;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --ui: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    --rough-edge: polygon(1% 5%, 18% 2%, 36% 4%, 55% 1%, 76% 3%, 99% 1%, 98% 24%, 100% 48%, 98% 71%, 99% 97%, 78% 96%, 59% 99%, 39% 97%, 20% 99%, 1% 96%, 2% 72%, 0 49%, 2% 27%);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--ui);
+    /* strokes must never scroll, zoom, or select the page */
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; touch-action: none; }
+
+  /* ---------------- HUD ---------------- */
+
+  #hud {
+    position: fixed;
+    left: var(--play-l, 0px); top: var(--play-t, 0px);
+    width: var(--play-w, 100%); height: var(--play-h, 100%);
+    pointer-events: none;
+    display: none;
+    padding: calc(var(--safe-t) + 10px) 14px calc(var(--safe-b) + 10px);
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  #hud.on { display: flex; }
+
+  .hearts { display: flex; gap: 5px; }
+  .heart {
+    width: 15px; height: 15px;
+    border: 2.5px solid var(--ink);
+    border-radius: 3px;
+    transform: rotate(-8deg);
+    background: var(--ink);
+  }
+  .heart.gone { background: transparent; opacity: .28; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+  #clock {
+    font-size: 26px; font-weight: 700;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  #clock.urgent { color: var(--eraser); }
+
+  #roundpips { display: flex; gap: 4px; justify-content: center; margin-top: 3px; }
+  #roundpips i {
+    width: 7px; height: 7px; border-radius: 50%;
+    border: 2px solid var(--ink); opacity: .3;
+  }
+  #roundpips i.won { background: var(--ink); opacity: 1; }
+  #roundpips i.lost { background: var(--eraser); border-color: var(--eraser); opacity: 1; }
+
+  #clocklabel {
+    font-size: 9px; font-weight: 700; letter-spacing: .2em;
+    color: var(--soft); text-transform: uppercase; min-height: 11px;
+  }
+  #inkwrapTop { display: none; margin-top: 8px; transform: rotate(180deg); }
+  #inkwrapTop.on { display: block; }
+  #inkbarTop {
+    height: 9px; border: 2.5px solid var(--ink); border-radius: 6px; overflow: hidden;
+  }
+  #inkfillTop { height: 100%; width: 50%; background: var(--gold); transition: width .06s linear; }
+
+  #inkwrap { display: flex; align-items: center; gap: 9px; }
+  #inkwrap[hidden], #afford[hidden] { display: none; }
+  #afford {
+    display: flex; justify-content: center; gap: 12px; margin: 0 34px 7px 0;
+  }
+  #afford span { display: flex; align-items: center; gap: 2px; color: var(--ink); transition: opacity .12s; }
+  #afford span.off { opacity: .2; }
+  #afford svg { width: 20px; height: 19px; overflow: visible; }
+  #afford path { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  #afford i { font: 700 8px var(--ui); font-style: normal; color: var(--soft); }
+  #inkbar {
+    flex: 1; height: 11px;
+    border: 2.5px solid var(--ink);
+    border-radius: 6px;
+    overflow: hidden;
+    background: transparent;
+  }
+  #inkfill {
+    height: 100%; width: 50%;
+    background: var(--gold);
+    transition: width .06s linear;
+  }
+  #inkbar.broke { border-color: var(--eraser); }
+  #inklabel {
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--soft);
+    min-width: 30px; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sidetag { display: flex; align-items: center; gap: 8px; }
+  .sidetag > span {
+    font-size: 10px; font-weight: 700; letter-spacing: .16em;
+    color: var(--soft);
+  }
+  .sidetag.you > span { color: var(--gold); }
+
+  #halflabels {
+    position: fixed;
+    left: var(--play-l, 0px); top: var(--play-t, 0px);
+    width: var(--play-w, 100%); height: var(--play-h, 100%);
+    pointer-events: none;
+    opacity: 0;
+    display: none;
+  }
+  #halflabels.on { display: block; animation: fadeHalf 4.2s ease-out forwards; }
+  @keyframes fadeHalf {
+    0%, 62% { opacity: 1; } 100% { opacity: 0; }
+  }
+  .hl {
+    position: absolute; left: 0; right: 0;
+    text-align: center;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--soft);
+  }
+  .hl.top { top: 26%; }
+  .hl.bot { top: 68%; color: var(--gold); }
+
+  #coach {
+    position: fixed;
+    left: var(--play-l, 0px);
+    width: var(--play-w, 100%);
+    top: calc(var(--play-t, 0px) + var(--play-h, 100vh) * 0.28);
+    padding: 0 26px;
+    text-align: center;
+    pointer-events: none;
+    display: none;
+  }
+  #coach.on { display: block; }
+  #coachStep {
+    font-size: 10px; font-weight: 700; letter-spacing: .18em;
+    color: var(--soft); margin-bottom: 5px;
+  }
+  #coachPrompt {
+    font-size: 19px; font-weight: 700; line-height: 1.25;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+  }
+  #coachHint {
+    font-size: 13px; color: var(--soft); margin-top: 7px; line-height: 1.4;
+    text-wrap: balance;
+  }
+  #coachPrompt.win { color: var(--gold); }
+  button.tiny {
+    font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    padding: 7px 15px; border-width: 2px; border-radius: 8px;
+    background: transparent; color: var(--soft);
+    box-shadow: none; margin-top: 14px;
+  }
+
+  /* ---------------- home ---------------- */
+
+  .home {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 13px; width: 100%; max-width: 380px;
+  }
+
+  .titleblock { position: relative; width: 100%; padding: 4px 0 2px; }
+  .doodads {
+    position: absolute; inset: -14px 0 auto; width: 100%; height: auto;
+    color: var(--ink); opacity: .5; pointer-events: none;
+  }
+  .doodads .sun { stroke: #e0a52c; }
+  .doodads .cloud { stroke: var(--soft); }
+  .swipe {
+    position: absolute; left: 6%; right: 6%; top: 34%; height: 40px;
+    background: #f6d96b; opacity: .5;
+    transform: rotate(-1.4deg);
+    border-radius: 3px 8px 4px 7px;
+  }
+  .titleblock h1 { position: relative; }
+  .rule { position: relative; display: block; width: 74%; margin: -2px auto 0; height: auto; }
+
+  .carousel {
+    display: flex; align-items: stretch; gap: 6px; width: 100%;
+  }
+  .arrow {
+    flex: none; width: 34px; padding: 0;
+    font-size: 24px; line-height: 1;
+    background: transparent; color: var(--soft);
+    border: none; box-shadow: none;
+  }
+  .arrow:active { transform: none; color: var(--ink); }
+
+  .modecard {
+    flex: 1; min-width: 0;
+    border: 3px solid var(--ink); border-radius: 0;
+    clip-path: var(--rough-edge);
+    background: rgba(255,255,255,.5);
+    box-shadow: none;
+    filter: drop-shadow(5px 5px 0 rgba(34,38,43,.16));
+    padding: 12px 14px 13px;
+    text-align: center;
+  }
+  .modecard.ink   { border-color: #2b2f35; }
+  .modecard.shield{ border-color: #4b7cc4; }
+  .modecard.eraser{ border-color: #c9556f; }
+  .modecard.gold  { border-color: #c9931f; }
+
+  .mc-kind { font-size: 9px; font-weight: 700; letter-spacing: .22em; color: var(--soft); }
+  .mc-name { font-size: 27px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; margin-top: 1px; }
+  .mc-tag { font-size: 12.5px; font-style: italic; color: var(--soft); margin-top: 1px; }
+  .mc-blurb { font-size: 12.5px; line-height: 1.35; margin-top: 7px; }
+  .mc-best {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
+    color: var(--gold); margin-top: 8px; min-height: 13px;
+  }
+
+  .dots { display: flex; gap: 7px; }
+  .dots i {
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 2px solid var(--ink); opacity: .32;
+  }
+  .dots i.on { background: var(--ink); opacity: 1; }
+
+  button.big {
+    width: 100%; font-size: 25px; padding: 15px 0;
+    background: #2f6b46; border-color: #245236;
+    border-radius: 0;
+    clip-path: var(--rough-edge);
+    filter: drop-shadow(7px 7px 0 #ead95c) drop-shadow(2px 2px 0 rgba(34,38,43,.3));
+    box-shadow: none;
+  }
+  button.daily {
+    width: 100%; padding: 10px 12px;
+    font-size: 12px; letter-spacing: .08em;
+    color: var(--ink); background: #f2d05a; border-color: var(--ink);
+    clip-path: var(--rough-edge);
+    filter: drop-shadow(4px 4px 0 rgba(34,38,43,.22));
+    box-shadow: none;
+  }
+
+  .mascot { width: 52px; height: auto; color: var(--ink); margin: -4px 0; }
+
+  .pair { display: flex; gap: 9px; width: 100%; }
+  button.chunk {
+    flex: 1; font-size: 13.5px; font-weight: 700;
+    padding: 12px 6px; border-radius: 0;
+    clip-path: var(--rough-edge);
+    filter: drop-shadow(4px 4px 0 rgba(34,38,43,.18));
+    box-shadow: none;
+  }
+  button.chunk.yellow { background: #f2d05a; color: var(--ink); border-color: var(--ink); }
+  button.chunk.blue   { background: #3f6ea8; color: #fff; border-color: var(--ink); }
+
+  #walletChip {
+    position: absolute; top: calc(var(--safe-t) + 10px); right: 14px;
+    z-index: 2; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    padding: 6px 10px; border: 2px solid var(--ink); background: rgba(255,255,255,.72);
+    color: var(--ink); pointer-events: none;
+  }
+  #walletChip[hidden] { display: none; }
+  #chainNote {
+    font-size: 11px; color: var(--soft); margin: 6px 0 0; min-height: 14px;
+  }
+  .legal {
+    display: flex; gap: 14px; justify-content: center; margin-top: 8px;
+    font-size: 11px; letter-spacing: .06em;
+  }
+  .legal a { color: var(--soft); text-decoration: underline; }
+
+  .octrow { display: flex; gap: 9px; margin-top: 2px; }
+  .oct {
+    width: 62px; padding: 8px 0 6px;
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    background: transparent; color: var(--ink);
+    box-shadow: 3px 3px 0 rgba(34,38,43,.16);
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    font-size: 8.5px; font-weight: 700; letter-spacing: .1em;
+  }
+  .oct .glyph { font-size: 16px; line-height: 1; }
+  .oct b { font-weight: 700; }
+  .oct i { font-style: normal; font-size: 8px; color: var(--gold); letter-spacing: .12em; }
+  .oct.off { opacity: .45; }
+  .oct.off i { color: var(--soft); }
+  .oct.y { background: #f7e08a; }
+  .oct.p { background: #f3bcc8; }
+  .oct.b { background: #b8d0ec; }
+  .oct.g { background: #bcdcc4; }
+
+  button.nudge { animation: nudge 2.6s ease-in-out infinite; }
+  @keyframes nudge {
+    0%, 88%, 100% { transform: none; }
+    92% { transform: rotate(-1.6deg) scale(1.03); }
+    96% { transform: rotate(1.6deg) scale(1.03); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button.nudge { animation: none; }
+    #toast.show { animation-duration: .01s; }
+    #halflabels.on { animation-duration: .01s; }
+  }
+
+  /* Left-handed players get the meter and tags mirrored to the other thumb. */
+  body.lefty .row { flex-direction: row-reverse; }
+  body.lefty .sidetag { flex-direction: row-reverse; }
+  body.lefty #inklabel { order: -1; text-align: left; }
+
+  .rulehint {
+    font-size: 12.5px; line-height: 1.4; color: var(--ink);
+    background: rgba(216,160,42,.16);
+    border-left: 3px solid var(--gold);
+    padding: 9px 12px; border-radius: 4px;
+    max-width: 30ch; margin: 0; text-align: left;
+  }
+  .rulehint:empty { display: none; }
+
+  #shareUrl {
+    width: min(320px, 84vw);
+    font: 600 11px var(--ui);
+    padding: 9px 11px;
+    border: 2.5px solid var(--ink); border-radius: 8px;
+    background: #fff; color: var(--ink);
+    text-align: center;
+  }
+  #shareUrl[hidden] { display: none; }
+  #chalKind {
+    font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--eraser);
+  }
+  #pauseKind {
+    font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--gold);
+  }
+
+  .endstats {
+    display: grid; grid-template-columns: repeat(3, minmax(72px, 1fr));
+    width: min(330px, 88vw); gap: 7px;
+  }
+  .endstats:empty { display: none; }
+  .endstats div {
+    padding: 9px 5px 8px; background: rgba(255,255,255,.52);
+    border: 2px solid var(--ink); clip-path: var(--rough-edge);
+  }
+  .endstats b { display: block; font-size: 19px; }
+  .endstats span { display: block; margin-top: 2px; color: var(--soft); font-size: 8px; font-weight: 700; letter-spacing: .12em; }
+
+  .board { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 8px; }
+  #boardScreen { justify-content: flex-start; overflow-y: auto; }
+  #boardScreen h2 { flex: none; }
+  #boardScreen h3 { margin: 0; font-size: 11px; color: var(--soft); letter-spacing: .17em; text-transform: uppercase; }
+  #missionList { flex: none; }
+  .mission.done { background: rgba(216,160,42,.22); }
+  .mission b { font-size: 14px; }
+  .brow {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border: 2.5px solid var(--ink); border-radius: 0;
+    clip-path: var(--rough-edge);
+    padding: 11px 14px; background: rgba(255,255,255,.45);
+  }
+  .brow span { font-size: 15px; font-weight: 700; }
+  .brow em { font-style: normal; font-size: 11px; color: var(--soft); letter-spacing: .1em; display: block; }
+  .brow b { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .brow b.none { color: var(--soft); font-size: 14px; }
+
+  #folddiag {
+    width: min(240px, 78vw); height: auto; color: var(--ink);
+  }
+  .dlab { font: 700 11px var(--ui); letter-spacing: .14em; fill: var(--soft); }
+  .dsub { font: 400 10.5px var(--ui); fill: var(--ink); opacity: .8; }
+
+  #toast {
+    position: fixed;
+    left: var(--play-l, 0px);
+    width: var(--play-w, 100%);
+    top: calc(var(--play-t, 0px) + var(--play-h, 100vh) * 0.42);
+    text-align: center;
+    font-size: 30px; font-weight: 700;
+    letter-spacing: -.02em;
+    pointer-events: none;
+    opacity: 0;
+    color: var(--eraser);
+  }
+  #toast.show { animation: pop .85s ease-out forwards; }
+  @keyframes pop {
+    0%   { opacity: 0; transform: scale(.85) rotate(-3deg); }
+    18%  { opacity: 1; transform: scale(1.06) rotate(1deg); }
+    72%  { opacity: 1; transform: scale(1) rotate(0deg); }
+    100% { opacity: 0; transform: scale(1) translateY(-14px); }
+  }
+  #stage.hit { animation: pageHit .24s ease-out; }
+  @keyframes pageHit {
+    0%, 100% { transform: translateX(0); filter: none; }
+    28% { transform: translateX(-7px) rotate(-.3deg); filter: saturate(1.5); }
+    62% { transform: translateX(5px) rotate(.2deg); }
+  }
+
+  /* ---------------- screens ---------------- */
+
+  .screen {
+    position: fixed; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px;
+    padding: calc(var(--safe-t) + 24px) 26px calc(var(--safe-b) + 24px);
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter: blur(2px);
+    text-align: center;
+  }
+  .screen.on { display: flex; }
+
+  h1 {
+    margin: 0; font-size: clamp(38px, 13vw, 62px);
+    line-height: .92; letter-spacing: -.045em; font-weight: 700;
+  }
+  h2 { margin: 0; font-size: clamp(26px, 9vw, 40px); letter-spacing: -.03em; font-weight: 700; }
+  .sub { margin: 0; color: var(--soft); font-size: 15px; max-width: 30ch; line-height: 1.45; }
+
+  button {
+    font-family: var(--ui);
+    font-size: 20px; font-weight: 700; letter-spacing: .01em;
+    padding: 15px 40px;
+    border: 3px solid var(--ink);
+    border-radius: 0;
+    background: var(--ink); color: var(--paper);
+    box-shadow: 4px 4px 0 rgba(34,38,43,.22);
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+  button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(34,38,43,.22); }
+  button.ghost { background: transparent; color: var(--ink); }
+  .screen > button:not(.oct), #howBack, #boardBack {
+    clip-path: var(--rough-edge);
+    filter: drop-shadow(4px 4px 0 rgba(216,160,42,.35));
+  }
+  button:focus-visible { outline: 3px solid var(--eraser); outline-offset: 3px; }
+
+  .marks {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 9px 14px;
+    align-items: center;
+    text-align: left;
+    font-size: 14.5px;
+    max-width: 320px;
+    color: var(--ink);
+  }
+  .marks svg { display: block; }
+  .marks b { font-weight: 700; }
+  .marks span { color: var(--soft); }
+
+  #oppname { font-size: 14px; letter-spacing: .13em; text-transform: uppercase; color: var(--soft); font-weight: 700; }
+  .tagline { font-size: 15px; color: var(--soft); font-style: italic; }
+
+  @media (max-height: 760px) {
+    .home { gap: 8px; }
+    .titleblock { padding-top: 0; }
+    .titleblock h1 { font-size: clamp(34px, 11vw, 48px); }
+    .modecard { padding: 8px 12px 9px; }
+    .mc-name { font-size: 23px; }
+    button.big { padding: 12px 0; font-size: 22px; }
+    .mascot { display: none; }
+    button.chunk { padding: 9px 5px; }
+    .oct { padding-top: 6px; padding-bottom: 5px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="hud">
+  <div>
+    <div class="row">
+      <div class="sidetag them"><span>THEM</span><div class="hearts" id="oppHearts"></div></div>
+      <div style="text-align:center">
+        <div id="clocklabel"></div>
+        <div id="clock">75</div>
+        <div id="roundpips"></div>
+      </div>
+      <div style="width:78px"></div>
+    </div>
+    <div id="inkwrapTop"><div id="inkbarTop"><div id="inkfillTop"></div></div></div>
+  </div>
+  <div>
+    <div class="row" style="margin-bottom:9px">
+      <div class="sidetag you"><span>YOU</span><div class="hearts" id="myHearts"></div></div>
+    </div>
+    <div id="afford" aria-label="Mark ink costs"></div>
+    <div id="inkwrap">
+      <div id="inkbar"><div id="inkfill"></div></div>
+      <div id="inklabel">50</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="halflabels">
+  <div class="hl top">THEIR HALF &mdash; draw here to attack</div>
+  <div class="hl bot">YOUR HALF &mdash; draw here to defend</div>
+</div>
+
+<div id="coach">
+  <div id="coachStep"></div>
+  <div id="coachPrompt"></div>
+  <div id="coachHint"></div>
+  <button id="coachSkip" class="tiny">Skip the guide</button>
+</div>
+
+<div class="screen on" id="titleScreen">
+  <div class="home">
+    <div id="walletChip" hidden>GUEST</div>
+
+    <div class="titleblock">
+      <svg class="doodads" viewBox="0 0 320 96" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="34" cy="34" r="15" class="sun"/>
+          <g class="sun">
+            <path d="M34 8v-7M34 67v7M8 34h-7M60 34h7M16 16l-5-5M52 52l5 5M52 16l5-5M16 52l-5 5"/>
+          </g>
+          <path d="M232 26q10-9 22-4t20 4" class="cloud"/>
+          <path d="M254 46q9-7 19-3" class="cloud"/>
+        </g>
+        <g class="pencil">
+          <path d="M280 78 L306 52 l10 10 -26 26 -13 3 z" fill="#e8b33c" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+          <path d="M277 92 l13-3 -10-10 z" fill="#2b2f35"/>
+          <path d="M306 52 l10 10 6-6 -10-10 z" fill="#d98ca0" stroke="currentColor" stroke-width="2.4"/>
+        </g>
+        <g class="rubber">
+          <path d="M6 74 h34 v10 l-6 6 h-34 v-10 z" fill="#e79bb0" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+          <path d="M6 84 h34 l6-6" fill="none" stroke="currentColor" stroke-width="2.4"/>
+        </g>
+      </svg>
+      <div class="swipe"></div>
+      <h1>Doodle<br>Champion</h1>
+      <svg class="rule" viewBox="0 0 260 12" aria-hidden="true">
+        <path d="M4 7 q40-6 84-2 t80 1 q44 3 88-3" fill="none" stroke="#c9455f" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="carousel">
+      <button class="arrow left" id="modePrev" aria-label="Previous mode">&lsaquo;</button>
+      <div class="modecard" id="modeCard">
+        <div class="mc-kind">MODE</div>
+        <div class="mc-name" id="mcName">Duel</div>
+        <div class="mc-tag" id="mcTag">one page, two pencils</div>
+        <div class="mc-blurb" id="mcBlurb"></div>
+        <div class="mc-best" id="mcBest"></div>
+      </div>
+      <button class="arrow right" id="modeNext" aria-label="Next mode">&rsaquo;</button>
+    </div>
+    <div class="dots" id="modeDots"></div>
+
+    <button id="playBtn" class="big">&#9654; PLAY</button>
+    <button id="dailyBtn" class="daily">&#9733; TODAY'S PAGE &middot; MARGIN MONSTER</button>
+
+    <svg class="mascot" viewBox="0 0 60 74" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round">
+        <circle cx="30" cy="13" r="10"/>
+        <path d="M30 23 v22 M30 30 l-13 8 M30 30 l13 8 M30 45 l-11 17 M30 45 l11 17"/>
+      </g>
+      <path d="M21 22 q11 5 19 1" fill="none" stroke="#c9455f" stroke-width="5" stroke-linecap="round"/>
+      <ellipse cx="30" cy="68" rx="15" ry="3.5" fill="rgba(34,38,43,.13)"/>
+    </svg>
+
+    <div class="pair">
+      <button id="learnBtn" class="chunk yellow">&#9998; Learn to draw</button>
+      <button id="boardBtn" class="chunk blue">&#9678; Your board</button>
+    </div>
+
+    <div class="octrow">
+      <button class="oct y" id="tSound"><span class="glyph">&#9834;</span><b>SOUND</b><i>ON</i></button>
+      <button class="oct p" id="tBuzz"><span class="glyph">&#9776;</span><b>BUZZ</b><i>ON</i></button>
+      <button class="oct b" id="tHand"><span class="glyph">&#9995;</span><b>HAND</b><i>R</i></button>
+      <button class="oct g" id="howBtn"><span class="glyph">?</span><b>MARKS</b><i>&nbsp;</i></button>
+    </div>
+
+    <div class="legal">
+      <a href="./privacy.html">Privacy</a>
+      <a href="./terms.html">Terms</a>
+    </div>
+
+  </div>
+</div>
+
+<div class="screen" id="howScreen">
+  <h2>Where you draw<br>is what you get</h2>
+  <svg id="folddiag" viewBox="0 0 240 190" aria-label="The page is split by a fold. The top half is theirs and marks drawn there attack. The bottom half is yours and marks drawn there defend.">
+    <rect x="6" y="6" width="228" height="86" rx="5" fill="rgba(91,141,214,.09)" stroke="currentColor" stroke-width="1.5" opacity=".85"/>
+    <rect x="6" y="98" width="228" height="86" rx="5" fill="rgba(216,160,42,.13)" stroke="currentColor" stroke-width="1.5" opacity=".85"/>
+    <text x="120" y="34" text-anchor="middle" class="dlab">THEIR HALF</text>
+    <text x="120" y="56" text-anchor="middle" class="dsub">circle &rarr; ink bomb</text>
+    <text x="120" y="74" text-anchor="middle" class="dsub">line &rarr; slash (close range)</text>
+    <text x="120" y="126" text-anchor="middle" class="dlab">YOUR HALF</text>
+    <text x="120" y="148" text-anchor="middle" class="dsub">circle &rarr; shield &middot; line &rarr; wall</text>
+    <text x="120" y="166" text-anchor="middle" class="dsub">zigzag &rarr; tangle &middot; tick &rarr; dash</text>
+  </svg>
+  <div class="marks" id="markList"></div>
+  <p class="sub">The same mark does different things in each half. Ink refills on its own &mdash; spend it well.</p>
+  <button id="howBack">Got it</button>
+</div>
+
+<div class="screen" id="vsScreen">
+  <div id="oppname">Round 1</div>
+  <h2 id="oppTitle">Cap Kid</h2>
+  <p class="tagline" id="oppTag"></p>
+  <p class="rulehint" id="oppRule"></p>
+  <button id="startBtn">Draw!</button>
+</div>
+
+<div class="screen" id="boardScreen">
+  <h2>Your board</h2>
+  <h3>Today's missions</h3>
+  <div class="board" id="missionList"></div>
+  <h3>Records &amp; experiments</h3>
+  <div class="board" id="boardList"></div>
+  <button id="boardBack">Back</button>
+</div>
+
+<div class="screen" id="endScreen">
+  <h2 id="endTitle">Erased!</h2>
+  <p class="sub" id="endBody"></p>
+  <div class="endstats" id="endStats"></div>
+  <button id="againBtn">Run it back</button>
+  <button class="ghost" id="shareBtn">&#10138; Challenge a friend</button>
+  <input id="shareUrl" readonly hidden>
+  <p id="chainNote" hidden></p>
+  <button class="ghost" id="homeBtn">Home</button>
+</div>
+
+<div class="screen" id="pauseScreen">
+  <div id="pauseKind">PENCIL DOWN</div>
+  <h2>Paused</h2>
+  <p class="sub">The page waits while you answer real life.</p>
+  <button id="resumeBtn">Keep drawing</button>
+</div>
+
+<div class="screen" id="challengeScreen">
+  <div id="chalKind">INCOMING CHALLENGE</div>
+  <h2>Someone drew<br>this at you</h2>
+  <p class="sub" id="chalBody"></p>
+  <button id="chalPlay">Take it on</button>
+  <button class="ghost" id="chalSkip">Not now</button>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
