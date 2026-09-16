@@ -3,7 +3,7 @@ node_modules/
 dist/
 .DS_Store
 
-# Secrets — never commit
+# Secrets 
 .env
 .env.*
 !.env.example
